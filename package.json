@@ -1,0 +1,19 @@
+{
+  "name": "claude-desktop-token-counter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Transparent Claude Desktop-compatible token counter MCP server.",
+  "bin": {
+    "claude-desktop-token-counter": "./dist/server.js"
+  },
+  "scripts": {
+    "start": "node dist/server.js",
+    "count": "node scripts/count.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "test": "node scripts/test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
