@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { computeConversationMetrics, estimateTokens } from "./tokenEngine.js";
 
 type JsonRpcRequest = {
@@ -40,10 +41,10 @@ const tools = [
   },
 ];
 
-function callTool(name: string, args: any) {
+async function callTool(name: string, args: any) {
   if (name === "estimate_text_tokens") {
     const text = typeof args?.text === "string" ? args.text : "";
-    return { content: [{ type: "text", text: JSON.stringify(estimateTokens(text), null, 2) }] };
+    return { content: [{ type: "text", text: JSON.stringify(await estimateTokens(text), null, 2) }] };
   }
 
   if (name === "estimate_claude_conversation_export") {
@@ -51,7 +52,7 @@ function callTool(name: string, args: any) {
       content: [
         {
           type: "text",
-          text: JSON.stringify(computeConversationMetrics(args?.conversation ?? {}), null, 2),
+          text: JSON.stringify(await computeConversationMetrics(args?.conversation ?? {}), null, 2),
         },
       ],
     };
@@ -62,7 +63,7 @@ function callTool(name: string, args: any) {
 
 let buffer = "";
 process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
+process.stdin.on("data", async (chunk) => {
   buffer += chunk;
   const lines = buffer.split(/\r?\n/);
   buffer = lines.pop() ?? "";
@@ -118,7 +119,7 @@ process.stdin.on("data", (chunk) => {
           ],
         });
       } else if (request.method === "tools/call") {
-        result(request.id, callTool(request.params?.name, request.params?.arguments ?? {}));
+        result(request.id, await callTool(request.params?.name, request.params?.arguments ?? {}));
       } else {
         error(request.id, -32601, `Method not found: ${request.method}`);
       }

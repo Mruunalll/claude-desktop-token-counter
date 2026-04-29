@@ -33,6 +33,14 @@ export type TokenEstimate = {
 
 const ROOT_MESSAGE_ID = "00000000-0000-4000-8000-000000000000";
 
+type TokenizerModule = {
+  countTokens?: (text: string) => number;
+  encode?: (text: string) => unknown[];
+  default?: TokenizerModule;
+};
+
+let tokenizerModulePromise: Promise<TokenizerModule | null> | null = null;
+
 export function stableStringify(value: unknown): string {
   const seen = new WeakSet<object>();
 
@@ -121,7 +129,40 @@ export function buildTrunk(conversation: ClaudeConversation): ClaudeMessage[] {
   return trunk.reverse();
 }
 
-export function estimateTokens(text: string): TokenEstimate {
+async function loadTokenizer(): Promise<TokenizerModule | null> {
+  tokenizerModulePromise ??= (async () => {
+    const candidates = [
+      "gpt-tokenizer/model/o200k_base",
+      "gpt-tokenizer/encoding/o200k_base",
+      "gpt-tokenizer",
+    ];
+
+    for (const specifier of candidates) {
+      try {
+        return (await import(specifier)) as TokenizerModule;
+      } catch {
+        // Keep trying supported package entry points. Fall back to heuristic below.
+      }
+    }
+
+    return null;
+  })();
+
+  return tokenizerModulePromise;
+}
+
+function countWithTokenizer(tokenizer: TokenizerModule | null, text: string): number | null {
+  const candidates = [tokenizer, tokenizer?.default].filter(Boolean) as TokenizerModule[];
+
+  for (const candidate of candidates) {
+    if (typeof candidate.countTokens === "function") return candidate.countTokens(text);
+    if (typeof candidate.encode === "function") return candidate.encode(text).length;
+  }
+
+  return null;
+}
+
+function estimateTokensHeuristically(text: string): TokenEstimate {
   const chars = text.length;
   if (!text) return { tokens: 0, chars, estimator: "heuristic" };
 
@@ -140,10 +181,26 @@ export function estimateTokens(text: string): TokenEstimate {
   return { tokens: Math.max(1, estimated), chars, estimator: "heuristic" };
 }
 
-export function computeConversationMetrics(conversation: ClaudeConversation) {
+export async function estimateTokens(text: string): Promise<TokenEstimate> {
+  const chars = text.length;
+  if (!text) return { tokens: 0, chars, estimator: "heuristic" };
+
+  try {
+    const tokenCount = countWithTokenizer(await loadTokenizer(), text);
+    if (typeof tokenCount === "number" && Number.isFinite(tokenCount)) {
+      return { tokens: tokenCount, chars, estimator: "gpt-tokenizer" };
+    }
+  } catch {
+    // The tool should keep working even if the optional tokenizer cannot load.
+  }
+
+  return estimateTokensHeuristically(text);
+}
+
+export async function computeConversationMetrics(conversation: ClaudeConversation) {
   const trunk = buildTrunk(conversation);
   const text = trunk.map(stringifyMessageCountables).filter(Boolean).join("\n");
-  const estimate = estimateTokens(text);
+  const estimate = await estimateTokens(text);
   const lastAssistantMs = trunk.reduce<number | null>((latest, message) => {
     if (message.sender !== "assistant" || !message.created_at) return latest;
     const ms = Date.parse(message.created_at);
@@ -159,7 +216,7 @@ export function computeConversationMetrics(conversation: ClaudeConversation) {
     limitations: [
       "Does not include Claude Desktop system prompt or hidden context.",
       "Counts only user-supplied/exported conversation data.",
-      "Uses a transparent heuristic unless wired to an exact tokenizer dependency.",
+      "Uses gpt-tokenizer when installed, with a transparent heuristic fallback.",
     ],
   };
 }

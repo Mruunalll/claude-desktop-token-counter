@@ -21,6 +21,7 @@ Clone the repository:
 ```bash
 git clone git@github.com:Mruunalll/claude-desktop-token-counter.git
 cd claude-desktop-token-counter
+npm install
 ```
 
 Find your Node path:
@@ -30,6 +31,17 @@ which node
 ```
 
 If `which node` returns `/usr/local/bin/node`, use that in the Claude Desktop config below. If you use another Node manager, use the absolute path it prints.
+
+On Windows, use Command Prompt or PowerShell:
+
+```powershell
+where node
+```
+
+Claude Desktop config lives in different places depending on the operating system:
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ## Add to Claude Desktop
 
@@ -49,6 +61,21 @@ Example config:
       "command": "/usr/local/bin/node",
       "args": [
         "/absolute/path/to/claude-desktop-token-counter/dist/server.js"
+      ]
+    }
+  }
+}
+```
+
+Windows paths need escaped backslashes:
+
+```json
+{
+  "mcpServers": {
+    "claude-token-counter": {
+      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "C:\\Users\\YOUR_USER\\claude-desktop-token-counter\\dist\\server.js"
       ]
     }
   }
@@ -91,9 +118,11 @@ Expected output:
 {
   "tokens": 9,
   "chars": 35,
-  "estimator": "heuristic"
+  "estimator": "gpt-tokenizer"
 }
 ```
+
+If dependencies are not installed, `estimator` may be `"heuristic"` instead.
 
 Claude Desktop can also show a reusable prompt named:
 
@@ -104,6 +133,12 @@ check_tokens
 Use that prompt shortcut when you want Claude to call the counter without retyping the full instruction.
 
 ## Local Test
+
+Build from TypeScript:
+
+```bash
+npm run build
+```
 
 Run the MCP smoke test:
 
@@ -137,20 +172,60 @@ Output:
 {
   "tokens": 9,
   "chars": 35,
-  "estimator": "heuristic"
+  "estimator": "gpt-tokenizer"
 }
 ```
+
+If dependencies are not installed, `estimator` may be `"heuristic"` instead.
 
 ## Tools
 
 - `estimate_text_tokens`: counts text explicitly supplied to the tool.
 - `estimate_claude_conversation_export`: counts a Claude-like conversation JSON object containing `chat_messages` and `current_leaf_message_uuid`.
 
+## Conversation JSON Shape
+
+`estimate_claude_conversation_export` accepts a Claude-like JSON object:
+
+```json
+{
+  "current_leaf_message_uuid": "assistant-2",
+  "chat_messages": [
+    {
+      "uuid": "user-1",
+      "parent_message_uuid": "00000000-0000-4000-8000-000000000000",
+      "sender": "human",
+      "created_at": "2026-04-30T10:00:00.000Z",
+      "content": [
+        {
+          "type": "text",
+          "text": "Please summarize this."
+        }
+      ]
+    },
+    {
+      "uuid": "assistant-2",
+      "parent_message_uuid": "user-1",
+      "sender": "assistant",
+      "created_at": "2026-04-30T10:00:12.000Z",
+      "content": [
+        {
+          "type": "text",
+          "text": "Summary text."
+        }
+      ]
+    }
+  ]
+}
+```
+
+See `fixtures/sample-conversation.json` for a fuller example. Claude Desktop does not currently expose a one-click export for this private conversation-tree shape, so this tool is mainly for explicit JSON you already have from a safe source.
+
 ## Architecture
 
 - `src/tokenEngine.ts`: token/text extraction, trunk reconstruction, cache-window estimate.
 - `src/server.ts`: minimal stdio MCP JSON-RPC transport.
-- `dist/server.js`: runnable dependency-free build for local smoke testing.
+- `dist/server.js`: runnable MCP server build for local smoke testing.
 
 ## Limitations
 
@@ -158,7 +233,8 @@ Output:
 - It does not automatically monitor every Claude Desktop message.
 - It does not inject a live token counter into the Claude Desktop UI.
 - It does not intercept internal Claude Desktop network requests.
-- Counts are approximate and do not include hidden system prompts or server-side context.
+- Counts use `gpt-tokenizer` when installed, with a heuristic fallback.
+- Counts do not include hidden system prompts or server-side context.
 
 ## Security posture
 

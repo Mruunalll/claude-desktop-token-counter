@@ -91,7 +91,7 @@ try {
       arguments: { text: "Hello Claude Desktop token counter." },
     })
   );
-  assert.equal(textResult.estimator, "heuristic");
+  assert.ok(["heuristic", "gpt-tokenizer"].includes(textResult.estimator));
   assert.ok(textResult.tokens > 0);
   assert.equal(textResult.chars, 35);
 

@@ -1,17 +1,42 @@
 {
   "name": "claude-desktop-token-counter",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Transparent Claude Desktop-compatible token counter MCP server.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mruunalll/claude-desktop-token-counter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Mruunalll/claude-desktop-token-counter/issues"
+  },
+  "homepage": "https://github.com/Mruunalll/claude-desktop-token-counter#readme",
   "bin": {
     "claude-desktop-token-counter": "./dist/server.js"
   },
+  "files": [
+    "dist",
+    "src",
+    "scripts",
+    "fixtures",
+    "ARCHITECTURE.md",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
+    "build": "tsc",
     "start": "node dist/server.js",
     "count": "node scripts/count.mjs",
     "smoke": "node scripts/smoke.mjs",
     "test": "node scripts/test.mjs"
+  },
+  "dependencies": {
+    "gpt-tokenizer": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
   },
   "engines": {
     "node": ">=20"

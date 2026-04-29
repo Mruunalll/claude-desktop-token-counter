@@ -35,7 +35,7 @@ Use a local MCPB-packaged MCP server for Claude Desktop. Treat it as an explicit
 
 Recommended module boundaries:
 
-- Token counting engine: pure TypeScript functions for content extraction, trunk reconstruction, token estimation, and cache-window calculation.
+- Token counting engine: pure TypeScript functions for content extraction, trunk reconstruction, token estimation, and cache-window calculation. It uses `gpt-tokenizer` when available and falls back to a transparent heuristic if the dependency cannot load.
 - Transport layer: MCP stdio server, later packageable as MCPB.
 - UI layer: optional MCP App/dashboard rendered only when invoked. Do not attempt global Claude Desktop DOM injection.
 

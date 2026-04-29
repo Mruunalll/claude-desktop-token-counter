@@ -2,6 +2,7 @@
 "use strict";
 
 const ROOT_MESSAGE_ID = "00000000-0000-4000-8000-000000000000";
+let tokenizerModulePromise = null;
 
 function stableStringify(value) {
   const seen = new WeakSet();
@@ -70,7 +71,35 @@ function buildTrunk(conversation) {
   return trunk.reverse();
 }
 
-function estimateTokens(text) {
+async function loadTokenizer() {
+  tokenizerModulePromise ??= (async () => {
+    const candidates = [
+      "gpt-tokenizer/model/o200k_base",
+      "gpt-tokenizer/encoding/o200k_base",
+      "gpt-tokenizer"
+    ];
+    for (const specifier of candidates) {
+      try {
+        return await import(specifier);
+      } catch {
+        // Keep trying supported package entry points. Fall back to heuristic below.
+      }
+    }
+    return null;
+  })();
+  return tokenizerModulePromise;
+}
+
+function countWithTokenizer(tokenizer, text) {
+  const candidates = [tokenizer, tokenizer?.default].filter(Boolean);
+  for (const candidate of candidates) {
+    if (typeof candidate.countTokens === "function") return candidate.countTokens(text);
+    if (typeof candidate.encode === "function") return candidate.encode(text).length;
+  }
+  return null;
+}
+
+function estimateTokensHeuristically(text) {
   const chars = text.length;
   if (!text) return { tokens: 0, chars, estimator: "heuristic" };
   const segments = text.match(/[\p{L}\p{N}]+|[^\s\p{L}\p{N}]/gu) ?? [];
@@ -86,10 +115,24 @@ function estimateTokens(text) {
   return { tokens: Math.max(1, estimated), chars, estimator: "heuristic" };
 }
 
-function computeConversationMetrics(conversation) {
+async function estimateTokens(text) {
+  const chars = text.length;
+  if (!text) return { tokens: 0, chars, estimator: "heuristic" };
+  try {
+    const tokenCount = countWithTokenizer(await loadTokenizer(), text);
+    if (typeof tokenCount === "number" && Number.isFinite(tokenCount)) {
+      return { tokens: tokenCount, chars, estimator: "gpt-tokenizer" };
+    }
+  } catch {
+    // The tool should keep working even if the optional tokenizer cannot load.
+  }
+  return estimateTokensHeuristically(text);
+}
+
+async function computeConversationMetrics(conversation) {
   const trunk = buildTrunk(conversation);
   const text = trunk.map(stringifyMessageCountables).filter(Boolean).join("\n");
-  const estimate = estimateTokens(text);
+  const estimate = await estimateTokens(text);
   const lastAssistantMs = trunk.reduce((latest, message) => {
     if (message.sender !== "assistant" || !message.created_at) return latest;
     const ms = Date.parse(message.created_at);
@@ -104,7 +147,7 @@ function computeConversationMetrics(conversation) {
     limitations: [
       "Does not include Claude Desktop system prompt or hidden context.",
       "Counts only user-supplied/exported conversation data.",
-      "Uses a transparent heuristic unless wired to an exact tokenizer dependency."
+      "Uses gpt-tokenizer when installed, with a transparent heuristic fallback."
     ]
   };
 }
@@ -142,14 +185,14 @@ const tools = [
   }
 ];
 
-function callTool(name, args) {
+async function callTool(name, args) {
   if (name === "estimate_text_tokens") {
     const text = typeof args?.text === "string" ? args.text : "";
-    return { content: [{ type: "text", text: JSON.stringify(estimateTokens(text), null, 2) }] };
+    return { content: [{ type: "text", text: JSON.stringify(await estimateTokens(text), null, 2) }] };
   }
   if (name === "estimate_claude_conversation_export") {
     return {
-      content: [{ type: "text", text: JSON.stringify(computeConversationMetrics(args?.conversation ?? {}), null, 2) }]
+      content: [{ type: "text", text: JSON.stringify(await computeConversationMetrics(args?.conversation ?? {}), null, 2) }]
     };
   }
   throw new Error(`Unknown tool: ${name}`);
@@ -157,7 +200,7 @@ function callTool(name, args) {
 
 let buffer = "";
 process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
+process.stdin.on("data", async (chunk) => {
   buffer += chunk;
   const lines = buffer.split(/\r?\n/);
   buffer = lines.pop() ?? "";
@@ -211,7 +254,7 @@ process.stdin.on("data", (chunk) => {
           ]
         });
       } else if (request.method === "tools/call") {
-        result(request.id, callTool(request.params?.name, request.params?.arguments ?? {}));
+        result(request.id, await callTool(request.params?.name, request.params?.arguments ?? {}));
       } else {
         error(request.id, -32601, `Method not found: ${request.method}`);
       }
